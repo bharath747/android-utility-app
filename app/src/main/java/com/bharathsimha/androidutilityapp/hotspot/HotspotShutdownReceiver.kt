@@ -45,9 +45,9 @@ class HotspotShutdownReceiver : BroadcastReceiver() {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_wifi)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Hotspot auto-off time reached")
-            .setContentText("Android does not allow ordinary apps to switch off an existing system hotspot automatically. Tap to open wireless settings.")
+            .setContentText("Tap to open wireless settings and turn off the hotspot.")
             .setAutoCancel(true)
             .setContentIntent(pending)
             .build()
