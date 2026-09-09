@@ -23,11 +23,12 @@ class HotspotShutdownReceiver : BroadcastReceiver() {
                 val schedules = HotspotScheduleStore(context).schedules.first()
                 val schedule = schedules.firstOrNull { it.id == id && it.enabled }
                 if (schedule != null && ZonedDateTime.now().dayOfWeek in schedule.days) {
-                    val turnedOff = HotspotAutoOffController(context).tryTurnOff()
-                    if (!turnedOff) {
-                        showNotification(context, schedule.id)
-                    } else {
-                        showSuccessNotification(context, schedule.id)
+                    HotspotAutoOffController(context).tryTurnOff { turnedOff ->
+                        if (turnedOff) {
+                            showSuccessNotification(context, schedule.id)
+                        } else {
+                            showNotification(context, schedule.id)
+                        }
                     }
                     HotspotScheduler(context).scheduleNext(schedule)
                 }
@@ -50,7 +51,7 @@ class HotspotShutdownReceiver : BroadcastReceiver() {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Hotspot auto-off time reached")
-            .setContentText("Automatic shutdown is unavailable. Tap to open wireless settings.")
+            .setContentText("Automatic shutdown was unavailable. Tap to open wireless settings.")
             .setAutoCancel(true)
             .setContentIntent(pending)
             .addAction(android.R.drawable.ic_menu_manage, "Open settings", pending)
