@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.time.ZonedDateTime
 
 class HotspotShutdownReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
@@ -21,7 +22,9 @@ class HotspotShutdownReceiver : BroadcastReceiver() {
                 val schedules = HotspotScheduleStore(context).schedules.first()
                 val schedule = schedules.firstOrNull { it.id == id && it.enabled }
                 if (schedule != null) {
-                    showNotification(context)
+                    if (ZonedDateTime.now().dayOfWeek in schedule.days) {
+                        showNotification(context, schedule.id)
+                    }
                     HotspotScheduler(context).scheduleNext(schedule)
                 }
             } finally {
@@ -30,10 +33,16 @@ class HotspotShutdownReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun showNotification(context: Context) {
+    private fun showNotification(context: Context, scheduleId: Long) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Hotspot automation", NotificationManager.IMPORTANCE_DEFAULT))
-        val pending = PendingIntent.getActivity(context, 100, Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, "Hotspot automation", NotificationManager.IMPORTANCE_DEFAULT)
+        )
+        val pending = PendingIntent.getActivity(
+            context, 100,
+            Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Hotspot auto-off time reached")
@@ -41,10 +50,8 @@ class HotspotShutdownReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .setContentIntent(pending)
             .build()
-        manager.notify((idHash(context)).toInt(), notification)
+        manager.notify(scheduleId.hashCode(), notification)
     }
-
-    private fun idHash(context: Context): Long = System.currentTimeMillis() % Int.MAX_VALUE
 
     companion object { const val CHANNEL_ID = "hotspot_automation" }
 }
