@@ -13,8 +13,8 @@ class BootReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val schedule = HotspotScheduleStore(context).schedule.first()
-                HotspotScheduler(context).scheduleNext(schedule)
+                val schedules = HotspotScheduleStore(context).schedules.first()
+                HotspotScheduler(context).scheduleAll(schedules)
             } finally {
                 pendingResult.finish()
             }
