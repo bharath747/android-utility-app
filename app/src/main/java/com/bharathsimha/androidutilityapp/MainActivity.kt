@@ -81,6 +81,7 @@ private fun HotspotScreen() {
     var minute by remember { mutableStateOf(30) }
     var days by remember { mutableStateOf(DayOfWeek.entries.toSet()) }
     val snackbar = remember { SnackbarHostState() }
+    val directControlAvailable = Build.VERSION.SDK_INT >= 36 && Settings.System.canWrite(context)
 
     LaunchedEffect(Unit) {
         store.schedules.collect { schedules = it }
@@ -97,6 +98,30 @@ private fun HotspotScreen() {
             item {
                 Text("Hotspot Auto-Off", style = MaterialTheme.typography.headlineMedium)
                 Text("Create one or more automatic hotspot turn-off schedules.")
+            }
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Automatic control", style = MaterialTheme.typography.titleMedium)
+                        if (directControlAvailable) {
+                            Text("✓ Available on this device")
+                            Text("The app will attempt automatic shutdown first. If Android rejects it, you will receive the normal notification fallback.")
+                        } else {
+                            Text("⚠ Direct control is not currently available")
+                            Text("The app will notify you at the scheduled time and provide a shortcut to wireless settings.")
+                            if (Build.VERSION.SDK_INT >= 36) {
+                                OutlinedButton(onClick = {
+                                    context.startActivity(
+                                        Intent(
+                                            Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                                            android.net.Uri.parse("package:${context.packageName}")
+                                        )
+                                    )
+                                }) { Text("Allow automatic control") }
+                            }
+                        }
+                    }
+                }
             }
             item {
                 Text(
@@ -125,11 +150,8 @@ private fun HotspotScreen() {
                                 scope.launch {
                                     val updated = schedule.copy(enabled = checked)
                                     store.save(updated)
-                                    if (checked) {
-                                        HotspotScheduler(context).scheduleNext(updated)
-                                    } else {
-                                        HotspotScheduler(context).cancel(updated.id)
-                                    }
+                                    if (checked) HotspotScheduler(context).scheduleNext(updated)
+                                    else HotspotScheduler(context).cancel(updated.id)
                                     snackbar.showSnackbar(if (checked) "Schedule enabled" else "Schedule disabled")
                                 }
                             })
@@ -154,19 +176,10 @@ private fun HotspotScreen() {
                 }
             }
             item {
-                Text(
-                    if (editing == null) "New schedule" else "Edit schedule",
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Text(if (editing == null) "New schedule" else "Edit schedule", style = MaterialTheme.typography.titleLarge)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { hour = (hour + 23) % 24 }) { Text("−") }
-                    Text(
-                        LocalTime.of(hour, minute).format(DateTimeFormatter.ofPattern("hh:mm a")),
-                        style = MaterialTheme.typography.headlineSmall
-                    )
+                    Text(LocalTime.of(hour, minute).format(DateTimeFormatter.ofPattern("hh:mm a")), style = MaterialTheme.typography.headlineSmall)
                     OutlinedButton(onClick = { hour = (hour + 1) % 24 }) { Text("+") }
                     OutlinedButton(onClick = { minute = (minute + 55) % 60 }) { Text("−5m") }
                     OutlinedButton(onClick = { minute = (minute + 5) % 60 }) { Text("+5m") }
@@ -179,31 +192,15 @@ private fun HotspotScreen() {
                 }
                 Text("Repeat", style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(
-                        selected = days.size == 7,
-                        onClick = { days = DayOfWeek.entries.toSet() },
-                        label = { Text("Every day") }
-                    )
-                    FilterChip(
-                        selected = days == DayOfWeek.entries.filter { it.value <= 5 }.toSet(),
-                        onClick = { days = DayOfWeek.entries.filter { it.value <= 5 }.toSet() },
-                        label = { Text("Weekdays") }
-                    )
-                    FilterChip(
-                        selected = days == setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY),
-                        onClick = { days = setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY) },
-                        label = { Text("Weekends") }
-                    )
+                    FilterChip(selected = days.size == 7, onClick = { days = DayOfWeek.entries.toSet() }, label = { Text("Every day") })
+                    FilterChip(selected = days == DayOfWeek.entries.filter { it.value <= 5 }.toSet(), onClick = { days = DayOfWeek.entries.filter { it.value <= 5 }.toSet() }, label = { Text("Weekdays") })
+                    FilterChip(selected = days == setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY), onClick = { days = setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY) }, label = { Text("Weekends") })
                 }
             }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     DayOfWeek.entries.forEach { day ->
-                        FilterChip(
-                            selected = day in days,
-                            onClick = { days = if (day in days) days - day else days + day },
-                            label = { Text(day.name.take(1)) }
-                        )
+                        FilterChip(selected = day in days, onClick = { days = if (day in days) days - day else days + day }, label = { Text(day.name.take(1)) })
                     }
                 }
             }
@@ -212,27 +209,13 @@ private fun HotspotScreen() {
                     enabled = days.isNotEmpty(),
                     onClick = {
                         scope.launch {
-                            val schedule = editing?.copy(
-                                enabled = enabled,
-                                hour = hour,
-                                minute = minute,
-                                days = days
-                            ) ?: HotspotSchedule(
-                                enabled = enabled,
-                                hour = hour,
-                                minute = minute,
-                                days = days
-                            )
+                            val schedule = editing?.copy(enabled = enabled, hour = hour, minute = minute, days = days)
+                                ?: HotspotSchedule(enabled = enabled, hour = hour, minute = minute, days = days)
                             store.save(schedule)
-                            if (schedule.enabled) {
-                                HotspotScheduler(context).scheduleNext(schedule)
-                            } else {
-                                HotspotScheduler(context).cancel(schedule.id)
-                            }
+                            if (schedule.enabled) HotspotScheduler(context).scheduleNext(schedule)
+                            else HotspotScheduler(context).cancel(schedule.id)
                             editing = null
-                            snackbar.showSnackbar(
-                                if (schedule.enabled) "Schedule saved" else "Schedule saved disabled"
-                            )
+                            snackbar.showSnackbar(if (schedule.enabled) "Schedule saved" else "Schedule saved disabled")
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -242,10 +225,9 @@ private fun HotspotScreen() {
                 item {
                     val alarmManager = context.getSystemService(AlarmManager::class.java)
                     if (!alarmManager.canScheduleExactAlarms()) {
-                        OutlinedButton(
-                            onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Allow exact alarms") }
+                        OutlinedButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Allow exact alarms")
+                        }
                     }
                 }
             }
