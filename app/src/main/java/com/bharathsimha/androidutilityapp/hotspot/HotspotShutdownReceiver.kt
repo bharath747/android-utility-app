@@ -11,21 +11,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.time.ZonedDateTime
 
 class HotspotShutdownReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val pendingResult = goAsync()
+        val id = intent?.getLongExtra(HotspotScheduler.EXTRA_SCHEDULE_ID, -1L) ?: -1L
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val schedule = HotspotScheduleStore(context).schedule.first()
-                if (!schedule.enabled) return@launch
-
-                val now = ZonedDateTime.now()
-                if (now.dayOfWeek in schedule.days) {
+                val schedules = HotspotScheduleStore(context).schedules.first()
+                val schedule = schedules.firstOrNull { it.id == id && it.enabled }
+                if (schedule != null) {
                     showNotification(context)
+                    HotspotScheduler(context).scheduleNext(schedule)
                 }
-                HotspotScheduler(context).scheduleNext(schedule)
             } finally {
                 pendingResult.finish()
             }
@@ -34,16 +32,8 @@ class HotspotShutdownReceiver : BroadcastReceiver() {
 
     private fun showNotification(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Hotspot automation", NotificationManager.IMPORTANCE_DEFAULT)
-        )
-
-        val openIntent = Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS)
-        val pending = PendingIntent.getActivity(
-            context, 100, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
+        manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Hotspot automation", NotificationManager.IMPORTANCE_DEFAULT))
+        val pending = PendingIntent.getActivity(context, 100, Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Hotspot auto-off time reached")
@@ -51,11 +41,10 @@ class HotspotShutdownReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .setContentIntent(pending)
             .build()
-        manager.notify(NOTIFICATION_ID, notification)
+        manager.notify((idHash(context)).toInt(), notification)
     }
 
-    companion object {
-        const val CHANNEL_ID = "hotspot_automation"
-        const val NOTIFICATION_ID = 2002
-    }
+    private fun idHash(context: Context): Long = System.currentTimeMillis() % Int.MAX_VALUE
+
+    companion object { const val CHANNEL_ID = "hotspot_automation" }
 }
