@@ -17,13 +17,17 @@ class HotspotShutdownReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val pendingResult = goAsync()
         val id = intent?.getLongExtra(HotspotScheduler.EXTRA_SCHEDULE_ID, -1L) ?: -1L
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val schedules = HotspotScheduleStore(context).schedules.first()
                 val schedule = schedules.firstOrNull { it.id == id && it.enabled }
-                if (schedule != null) {
-                    if (ZonedDateTime.now().dayOfWeek in schedule.days) {
+                if (schedule != null && ZonedDateTime.now().dayOfWeek in schedule.days) {
+                    val turnedOff = HotspotAutoOffController(context).tryTurnOff()
+                    if (!turnedOff) {
                         showNotification(context, schedule.id)
+                    } else {
+                        showSuccessNotification(context, schedule.id)
                     }
                     HotspotScheduler(context).scheduleNext(schedule)
                 }
@@ -46,9 +50,24 @@ class HotspotShutdownReceiver : BroadcastReceiver() {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Hotspot auto-off time reached")
-            .setContentText("Tap to open wireless settings and turn off the hotspot.")
+            .setContentText("Automatic shutdown is unavailable. Tap to open wireless settings.")
             .setAutoCancel(true)
             .setContentIntent(pending)
+            .addAction(android.R.drawable.ic_menu_manage, "Open settings", pending)
+            .build()
+        manager.notify(scheduleId.hashCode(), notification)
+    }
+
+    private fun showSuccessNotification(context: Context, scheduleId: Long) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, "Hotspot automation", NotificationManager.IMPORTANCE_DEFAULT)
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Hotspot turned off")
+            .setContentText("The scheduled hotspot shutdown completed successfully.")
+            .setAutoCancel(true)
             .build()
         manager.notify(scheduleId.hashCode(), notification)
     }
