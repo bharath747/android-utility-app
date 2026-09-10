@@ -10,7 +10,7 @@ import java.util.concurrent.Executors
  *
  * Android only exposes TetheringManager from API 36. A request created by the
  * app can be stopped with the matching request. Hotspots started externally
- * are not treated as app-owned and continue to use the notification fallback.
+ * continue to use the notification fallback.
  */
 class HotspotAutoOffController(private val context: Context) {
     private val executor: Executor = Executors.newSingleThreadExecutor()
@@ -37,7 +37,7 @@ class HotspotAutoOffController(private val context: Context) {
             tetheringManager.startTethering(
                 request,
                 executor,
-                object : android.net.TetheringManager.StartTetheringCallback() {
+                object : android.net.TetheringManager.StartTetheringCallback {
                     override fun onTetheringStarted() {
                         setAppManaged(true)
                         onResult(true)
