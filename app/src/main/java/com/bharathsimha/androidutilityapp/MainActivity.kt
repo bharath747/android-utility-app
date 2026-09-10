@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.bharathsimha.androidutilityapp.hotspot.HotspotAutoOffController
 import com.bharathsimha.androidutilityapp.hotspot.HotspotSchedule
 import com.bharathsimha.androidutilityapp.hotspot.HotspotScheduleStore
 import com.bharathsimha.androidutilityapp.hotspot.HotspotScheduler
@@ -73,6 +74,7 @@ class MainActivity : ComponentActivity() {
 private fun HotspotScreen() {
     val context = LocalContext.current
     val store = remember { HotspotScheduleStore(context) }
+    val controller = remember { HotspotAutoOffController(context) }
     val scope = rememberCoroutineScope()
     var schedules by remember { mutableStateOf<List<HotspotSchedule>>(emptyList()) }
     var editing by remember { mutableStateOf<HotspotSchedule?>(null) }
@@ -80,8 +82,9 @@ private fun HotspotScreen() {
     var hour by remember { mutableStateOf(23) }
     var minute by remember { mutableStateOf(30) }
     var days by remember { mutableStateOf(DayOfWeek.entries.toSet()) }
+    var appManaged by remember { mutableStateOf(controller.isAppManaged()) }
     val snackbar = remember { SnackbarHostState() }
-    val directControlAvailable = Build.VERSION.SDK_INT >= 36 && Settings.System.canWrite(context)
+    val directControlAvailable = Build.VERSION.SDK_INT >= 36
 
     LaunchedEffect(Unit) {
         store.schedules.collect { schedules = it }
@@ -101,24 +104,55 @@ private fun HotspotScreen() {
             }
             item {
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Automatic control", style = MaterialTheme.typography.titleMedium)
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Hotspot control", style = MaterialTheme.typography.titleMedium)
                         if (directControlAvailable) {
-                            Text("✓ Available on this device")
-                            Text("The app will attempt automatic shutdown first. If Android rejects it, you will receive the normal notification fallback.")
-                        } else {
-                            Text("⚠ Direct control is not currently available")
-                            Text("The app will notify you at the scheduled time and provide a shortcut to wireless settings.")
-                            if (Build.VERSION.SDK_INT >= 36) {
-                                OutlinedButton(onClick = {
-                                    context.startActivity(
-                                        Intent(
-                                            Settings.ACTION_MANAGE_WRITE_SETTINGS,
-                                            android.net.Uri.parse("package:${context.packageName}")
-                                        )
-                                    )
-                                }) { Text("Allow automatic control") }
+                            Text(if (appManaged) "✓ Hotspot is managed by this app" else "Hotspot is not managed by this app")
+                            Text("Start the hotspot from this app when you want scheduled shutdown to control that session. Hotspots started outside the app may require the notification fallback.")
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    enabled = !appManaged,
+                                    onClick = {
+                                        controller.tryStart { started ->
+                                            scope.launch {
+                                                appManaged = controller.isAppManaged()
+                                                snackbar.showSnackbar(
+                                                    if (started) "Hotspot started by Android Utilities"
+                                                    else "Android did not allow the app to start the hotspot"
+                                                )
+                                            }
+                                        }
+                                    }
+                                ) { Text("Start hotspot") }
+                                OutlinedButton(
+                                    enabled = appManaged,
+                                    onClick = {
+                                        controller.tryTurnOff { stopped ->
+                                            scope.launch {
+                                                appManaged = controller.isAppManaged()
+                                                snackbar.showSnackbar(
+                                                    if (stopped) "Hotspot turned off"
+                                                    else "The app could not stop the hotspot"
+                                                )
+                                            }
+                                        }
+                                    }
+                                ) { Text("Stop hotspot") }
                             }
+                        } else {
+                            Text("Automatic app-owned hotspot control requires Android 16 (API 36) or newer.")
+                            Text("Schedules remain available and will show a notification at the scheduled time when direct control is unavailable.")
+                        }
+                        if (Build.VERSION.SDK_INT >= 36 && !Settings.System.canWrite(context)) {
+                            Text("Some devices may require the system settings access below before allowing tethering control.")
+                            OutlinedButton(onClick = {
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                                        android.net.Uri.parse("package:${context.packageName}")
+                                    )
+                                )
+                            }) { Text("Allow system settings access") }
                         }
                     }
                 }
